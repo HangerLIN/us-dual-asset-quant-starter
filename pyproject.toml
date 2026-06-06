@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=69.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "us-dual-asset-quant-starter"
+version = "0.1.0"
+description = "Production-shaped starter for US equity, ETF, and option quant trading."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "alembic>=1.13.1",
+  "fastapi>=0.110.0",
+  "pandas>=2.2.2",
+  "pydantic>=2.7.0",
+  "pydantic-settings>=2.2.1",
+  "redis>=5.0.3",
+  "sqlalchemy>=2.0.29",
+  "structlog>=24.1.0",
+  "uvicorn[standard]>=0.29.0",
+]
+
+[project.optional-dependencies]
+ibkr = ["ibapi>=9.81.1.post1"]
+postgres = ["psycopg[binary,pool]>=3.1.18"]
+dev = ["pytest>=8.2.0", "pytest-asyncio>=0.23.6", "ruff>=0.4.2"]
+
+[tool.setuptools.packages.find]
+include = ["platform_core*", "platform_apps*", "examples*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
