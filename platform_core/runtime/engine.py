@@ -34,7 +34,7 @@ class EngineCycleResult:
 
 
 class TradingEngine:
-    """One data flow for backtest, paper, and live strategy execution."""
+    """回测使用的统一策略数据流；PAPER/LIVE 订单必须改由执行客户端提交。"""
 
     def __init__(
         self,
@@ -247,7 +247,7 @@ class TradingEngine:
         return events
 
     def reconcile(self) -> None:
-        """Refresh broker-authoritative account and position state."""
+        """刷新经纪商权威的账户与持仓状态。"""
         self._positions = {
             position.instrument.key: position for position in self.broker.positions()
         }

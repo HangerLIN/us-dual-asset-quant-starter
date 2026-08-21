@@ -1,4 +1,12 @@
 from .assets import AssetType, BarEvent, InstrumentRef, MarketQuote, PositionSnapshot
+from .broker import (
+    BrokerAccountValue,
+    BrokerExecution,
+    BrokerOrderRequest,
+    BrokerOrderStatus,
+    BrokerPnL,
+    BrokerPosition,
+)
 from .events import (
     AccountSnapshot,
     BacktestOrderEvent,
@@ -19,7 +27,13 @@ __all__ = [
     "AssetType",
     "BacktestOrderEvent",
     "BarEvent",
+    "BrokerAccountValue",
+    "BrokerExecution",
+    "BrokerOrderRequest",
+    "BrokerOrderStatus",
     "BrokerOrderUpdate",
+    "BrokerPnL",
+    "BrokerPosition",
     "ExecutionFill",
     "ExecutionRequest",
     "InstrumentRef",

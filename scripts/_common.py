@@ -9,6 +9,11 @@ from typing import Any
 
 from sqlalchemy.engine import Engine
 
+from platform_core.data.calendar import (
+    latest_session_on_or_before,
+    session_start_for_lookback,
+    session_window,
+)
 from platform_core.db import Base, get_engine, get_session_factory
 
 
@@ -34,15 +39,28 @@ def parse_window(
     end: str | None,
     days: int,
 ) -> tuple[datetime, datetime]:
-    if end:
-        end_dt = parse_datetime(end, default_time=time(19, 59))
+    if days < 1:
+        raise ValueError("days must be at least 1")
+
+    if end and not _is_date_only(end):
+        end_dt = parse_datetime(end, default_time=time.max)
+        end_session = latest_session_on_or_before(end_dt.date())
     else:
-        today = datetime.now(UTC).date()
-        end_dt = datetime.combine(today, time(19, 59), tzinfo=UTC)
-    if start:
-        start_dt = parse_datetime(start, default_time=time(13, 30))
+        requested_end = date.fromisoformat(end) if end else datetime.now(UTC).date()
+        end_session = latest_session_on_or_before(requested_end)
+        _, end_dt = session_window(end_session)
+        if end is None and datetime.now(UTC) < end_dt:
+            end_session = latest_session_on_or_before(end_session - timedelta(days=1))
+            _, end_dt = session_window(end_session)
+
+    if start and not _is_date_only(start):
+        start_dt = parse_datetime(start, default_time=time.min)
+    elif start:
+        start_dt, _ = session_window(date.fromisoformat(start))
     else:
-        start_dt = datetime.combine(end_dt.date() - timedelta(days=max(0, days - 1)), time(13, 30), tzinfo=UTC)
+        start_dt = session_start_for_lookback(end_session, days=days)
+    if start_dt >= end_dt:
+        raise ValueError("market window start must be before end")
     return start_dt, end_dt
 
 
@@ -53,6 +71,10 @@ def parse_datetime(value: str, *, default_time: time) -> datetime:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=UTC)
     return parsed.astimezone(UTC)
+
+
+def _is_date_only(value: str) -> bool:
+    return "T" not in value and " " not in value
 
 
 def open_db(database_url: str | None, *, create: bool = True):

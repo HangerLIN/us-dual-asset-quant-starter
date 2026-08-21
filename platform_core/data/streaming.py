@@ -12,7 +12,7 @@ from platform_core.schemas import BarEvent, InstrumentRef, MarketQuote
 
 
 class IBKRPollingQuoteFeed:
-    """Simple live quote source; replaceable by a streaming market-data adapter."""
+    """轻量实时报价源，可替换为流式行情适配器。"""
 
     def __init__(
         self,
@@ -54,7 +54,7 @@ class _BarState:
 
 
 class QuoteBarAggregator:
-    """Aggregate normalized quotes into deterministic wall-clock bars."""
+    """把规范化报价聚合为确定性的自然时间 K 线。"""
 
     def __init__(self, *, timeframe_seconds: int = 60) -> None:
         if timeframe_seconds <= 0:

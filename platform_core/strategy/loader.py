@@ -8,7 +8,7 @@ from .contracts import StrategyPlugin
 
 
 def load_strategy(import_path: str, parameters: dict[str, Any] | None = None) -> StrategyPlugin:
-    """Load ``package.module:attribute`` from an external strategy package."""
+    """从外部策略包加载 ``package.module:attribute``。"""
     module_name, separator, attribute_name = import_path.partition(":")
     if not separator or not module_name or not attribute_name:
         raise ValueError("strategy path must use 'package.module:attribute'")

@@ -1,3 +1,4 @@
+from .calendar import expected_market_minutes, latest_session_on_or_before, session_start_for_lookback, session_window
 from .ingestion import (
     IngestionResult,
     record_progress,
@@ -17,6 +18,10 @@ from .quality import (
 from .streaming import IBKRPollingQuoteFeed, QuoteBarAggregator
 
 __all__ = [
+    "expected_market_minutes",
+    "latest_session_on_or_before",
+    "session_start_for_lookback",
+    "session_window",
     "CoverageResult",
     "IBKRPollingQuoteFeed",
     "IngestionResult",

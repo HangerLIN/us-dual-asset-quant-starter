@@ -1,3 +1,5 @@
+"""共享的确定性测试替身与工厂。"""
+
 from __future__ import annotations
 
 from decimal import Decimal

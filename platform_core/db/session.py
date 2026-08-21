@@ -11,4 +11,4 @@ def get_engine(database_url: str | None = None):
 
 
 def get_session_factory(database_url: str | None = None):
-    return sessionmaker(bind=get_engine(database_url), future=True)
+    return sessionmaker(bind=get_engine(database_url), future=True, expire_on_commit=False)

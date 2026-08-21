@@ -1,6 +1,7 @@
 from platform_core.strategy import StrategyPlugin
 
 from .contracts import (
+    BacktestStrategyPlugin,
     CalibrationJob,
     CandidateSelector,
     DataIngestionAdapter,
@@ -9,9 +10,24 @@ from .contracts import (
     PerformanceReporter,
     PortfolioConstructor,
     RiskRulePlugin,
+    SignalPlugin,
+    StatefulStrategyPlugin,
+)
+from .runtime import (
+    BarFeatureState,
+    MemoryStrategyCheckpointStore,
+    SQLAlchemyStrategyCheckpointStore,
+    StrategyCheckpoint,
+    StrategyPipeline,
+    StrategyRegistry,
+    StrategyRuntime,
+    StrategyRuntimeConfig,
+    StrategyRuntimeMode,
+    StrategyRuntimeStatus,
 )
 
 __all__ = [
+    "BacktestStrategyPlugin",
     "CalibrationJob",
     "CandidateSelector",
     "DataIngestionAdapter",
@@ -20,5 +36,17 @@ __all__ = [
     "PerformanceReporter",
     "PortfolioConstructor",
     "RiskRulePlugin",
+    "SignalPlugin",
+    "StatefulStrategyPlugin",
+    "BarFeatureState",
+    "MemoryStrategyCheckpointStore",
+    "SQLAlchemyStrategyCheckpointStore",
+    "StrategyCheckpoint",
+    "StrategyPipeline",
+    "StrategyRegistry",
+    "StrategyRuntime",
+    "StrategyRuntimeConfig",
+    "StrategyRuntimeMode",
+    "StrategyRuntimeStatus",
     "StrategyPlugin",
 ]

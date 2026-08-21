@@ -19,7 +19,7 @@ from platform_core.schemas import (
 
 @dataclass(frozen=True, slots=True)
 class StrategyContext:
-    """Read-only platform state passed to a strategy on every event."""
+    """每个事件传给策略的只读平台状态。"""
 
     mode: RuntimeMode
     parameters: Mapping[str, Any] = field(default_factory=dict)
@@ -30,7 +30,7 @@ class StrategyContext:
 
 @runtime_checkable
 class StrategyPlugin(Protocol):
-    """The only contract a separately packaged strategy must implement."""
+    """独立策略包必须实现的唯一协议。"""
 
     strategy_code: str
     strategy_version: str
@@ -71,7 +71,7 @@ class StrategyPlugin(Protocol):
 
 
 class BaseStrategy(ABC):
-    """Convenience base class; strategy packages may implement the protocol directly."""
+    """便捷基类；策略包也可以直接实现协议。"""
 
     strategy_code: str
     strategy_version = "0.1.0"

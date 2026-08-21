@@ -8,7 +8,7 @@ from decimal import Decimal
 try:
     from _bootstrap import ROOT
     from _common import json_print, open_db, parse_symbols, parse_window, write_json
-except ModuleNotFoundError:  # pragma: no cover - used when imported as scripts.run_smoke in tests.
+except ModuleNotFoundError:  # pragma: no cover - 测试以 scripts.run_smoke 导入时使用。
     from scripts._bootstrap import ROOT  # noqa: F401
     from scripts._common import json_print, open_db, parse_symbols, parse_window, write_json
 from platform_core.backtest import DBBacktestRunner

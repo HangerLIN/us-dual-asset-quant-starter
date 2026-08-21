@@ -18,7 +18,7 @@ from .contracts import BrokerEvent
 
 
 class SimulatedBroker:
-    """Deterministic broker used by backtests and platform contract tests."""
+    """供回测和平台契约测试使用的确定性模拟经纪商。"""
 
     mode = RuntimeMode.BACKTEST
 

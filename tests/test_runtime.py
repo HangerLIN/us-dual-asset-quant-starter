@@ -6,7 +6,7 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import select
 
-from platform_core.broker import LIVE_CONFIRMATION, IBKRBroker, SimulatedBroker
+from platform_core.broker import SimulatedBroker, build_broker
 from platform_core.data import QuoteBarAggregator
 from platform_core.db import Base, get_engine, get_session_factory
 from platform_core.db.models import Fill, Order, Position
@@ -125,44 +125,10 @@ def test_runtime_rejects_stale_quote(tmp_path) -> None:
     session.close()
 
 
-def test_live_broker_requires_double_confirmation() -> None:
-    with pytest.raises(ValueError):
-        IBKRBroker(mode=RuntimeMode.PAPER, account_id="DU0000000")
-    with pytest.raises(PermissionError):
-        IBKRBroker(mode=RuntimeMode.LIVE, account_id="U123")
-    broker = IBKRBroker(
-        mode=RuntimeMode.LIVE,
-        account_id="U123",
-        allow_live_trading=True,
-        live_confirmation=LIVE_CONFIRMATION,
-    )
-    assert broker.mode == RuntimeMode.LIVE
-
-
-def test_ibkr_paper_broker_normalizes_order_and_fill_callbacks() -> None:
-    adapter = _FakeIBKRAdapter()
-    broker = IBKRBroker(
-        mode=RuntimeMode.PAPER,
-        account_id="DU123",
-        adapter=adapter,
-    )
-    bar, _ = _bar_and_quote()
-    request = ExecutionRequest(
-        strategy_code="test-paper",
-        instrument=bar.instrument,
-        side="BUY",
-        quantity=Decimal(2),
-        limit_price=Decimal(100),
-        client_order_id="test-paper-abc",
-    )
-    broker.connect()
-    submitted = broker.submit_order(request)
-    events = broker.drain_events()
-    broker.disconnect()
-
-    assert submitted.broker_order_id == "42"
-    assert any(getattr(event, "status", None) == OrderStatus.FILLED for event in events)
-    assert any(getattr(event, "execution_id", None) == "EXEC-42" for event in events)
+@pytest.mark.parametrize("mode", [RuntimeMode.PAPER, RuntimeMode.LIVE])
+def test_strategy_runtime_cannot_build_direct_ibkr_broker(mode) -> None:
+    with pytest.raises(PermissionError, match="StrategyExecutionClient"):
+        build_broker(mode)
 
 
 def test_quote_bar_aggregator_emits_completed_bar() -> None:
@@ -228,67 +194,6 @@ def _bar_and_quote() -> tuple[BarEvent, MarketQuote]:
         last=Decimal(100),
     )
     return bar, quote
-
-
-class _FakeIBKRAdapter:
-    def __init__(self) -> None:
-        self.connected = False
-        self._order_updates = []
-        self._execution_updates = []
-
-    def connect(self) -> None:
-        self.connected = True
-
-    def disconnect(self) -> None:
-        self.connected = False
-
-    def open_orders(self):
-        return []
-
-    def submit_order(self, request, *, account_id: str) -> int:
-        assert self.connected
-        assert account_id == "DU123"
-        self._order_updates.append(
-            {
-                "broker_order_id": 42,
-                "status": "Filled",
-                "filled": 2,
-                "remaining": 0,
-                "average_fill_price": 100,
-                "message": None,
-            }
-        )
-        self._execution_updates.append(
-            {
-                "broker_order_id": 42,
-                "execution_id": "EXEC-42",
-                "quantity": 2,
-                "fill_price": 100,
-                "filled_at": "20260527 13:30:00",
-                "side": "BOT",
-                "commission": "1.25",
-            }
-        )
-        return 42
-
-    def cancel_order(self, broker_order_id: int) -> None:
-        return None
-
-    def order_updates(self):
-        updates = list(self._order_updates)
-        self._order_updates.clear()
-        return updates
-
-    def execution_updates(self):
-        updates = list(self._execution_updates)
-        self._execution_updates.clear()
-        return updates
-
-    def account_positions(self, *, account_id: str):
-        return []
-
-    def account_values(self, *, account_id: str):
-        return {"NetLiquidation": "100000", "TotalCashValue": "100000"}
 
 
 class _MisreportedNotionalStrategy(BuyOnceTestStrategy):

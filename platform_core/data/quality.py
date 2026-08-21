@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -11,6 +11,8 @@ from sqlalchemy.orm import Session
 
 from platform_core.db.models import Bar1mEquity, Bar1mOption, DataQualityReport, OptionChainMeta
 from platform_core.schemas.assets import AssetType
+
+from .calendar import expected_market_minutes
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,13 +81,13 @@ def build_quality_report(
     min_option_quote_rows: int = 1,
 ) -> QualityReport:
     results: list[QualityCheckResult] = []
-    expected_minutes = _expected_market_minutes(start, end)
+    expected_minutes = expected_market_minutes(start, end)
     for raw_symbol in symbols:
         symbol = raw_symbol.upper()
         equity_rows = session.scalar(
             select(func.count())
             .select_from(Bar1mEquity)
-            .where(Bar1mEquity.symbol == symbol, Bar1mEquity.ts_end >= start, Bar1mEquity.ts_end <= end)
+            .where(Bar1mEquity.symbol == symbol, Bar1mEquity.ts_end >= start, Bar1mEquity.ts_end < end)
         )
         coverage = check_minute_coverage(expected_rows=expected_minutes, actual_rows=int(equity_rows or 0))
         results.append(
@@ -128,7 +130,7 @@ def build_quality_report(
             .where(
                 Bar1mOption.underlying_symbol == symbol,
                 Bar1mOption.ts_end >= start,
-                Bar1mOption.ts_end <= end,
+                Bar1mOption.ts_end < end,
             )
         )
         missing_bid_ask = session.scalar(
@@ -137,7 +139,7 @@ def build_quality_report(
             .where(
                 Bar1mOption.underlying_symbol == symbol,
                 Bar1mOption.ts_end >= start,
-                Bar1mOption.ts_end <= end,
+                Bar1mOption.ts_end < end,
                 (Bar1mOption.bid.is_(None) | Bar1mOption.ask.is_(None)),
             )
         )
@@ -185,31 +187,12 @@ def persist_quality_report(session: Session, report: QualityReport) -> int:
     return count
 
 
-def _expected_market_minutes(start: datetime, end: datetime) -> int:
-    if end <= start:
-        return 0
-    days = _business_days(start.date(), end.date())
-    if days <= 1:
-        return max(1, int((end - start).total_seconds() // 60) + 1)
-    return days * 390
-
-
-def _business_days(start: date, end: date) -> int:
-    count = 0
-    current = start
-    while current <= end:
-        if current.weekday() < 5:
-            count += 1
-        current += timedelta(days=1)
-    return count
-
-
 def _wide_spread_count(session: Session, *, symbol: str, start: datetime, end: datetime, limit: Decimal) -> int:
     rows: Iterable[tuple[Decimal | None, Decimal | None, Decimal | None]] = session.execute(
         select(Bar1mOption.bid, Bar1mOption.ask, Bar1mOption.mid).where(
             Bar1mOption.underlying_symbol == symbol,
             Bar1mOption.ts_end >= start,
-            Bar1mOption.ts_end <= end,
+            Bar1mOption.ts_end < end,
         )
     )
     count = 0

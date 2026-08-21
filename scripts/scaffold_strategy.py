@@ -87,7 +87,7 @@ class {class_name}(BaseStrategy):
         self.parameters = parameters or {{}}
 
     def on_bar(self, event, context: StrategyContext):
-        # Implement strategy decisions in this separate package.
+        # 在此独立策略包中实现策略决策。
         return []
 '''
 

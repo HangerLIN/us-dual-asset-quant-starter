@@ -23,7 +23,7 @@ def build_fixture_dataset(symbols: Sequence[str] | None = None, *, trade_date: d
     selected_symbols = [symbol.upper() for symbol in (symbols or ["SPY"])]
     session_date = trade_date or date(2026, 5, 27)
     start = datetime(session_date.year, session_date.month, session_date.day, 13, 30, tzinfo=UTC)
-    end = datetime(session_date.year, session_date.month, session_date.day, 19, 59, tzinfo=UTC)
+    end = datetime(session_date.year, session_date.month, session_date.day, 20, 0, tzinfo=UTC)
     equity_bars: list[BarEvent] = []
     option_contracts: list[InstrumentRef] = []
     option_quotes: list[MarketQuote] = []

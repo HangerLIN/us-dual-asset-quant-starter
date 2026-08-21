@@ -1,5 +1,5 @@
--- Upgrade an existing starter database to the strategy-agnostic execution schema.
--- Apply with your normal migration runner before starting paper/live services.
+-- 把现有基础数据库升级到与策略无关的执行结构。
+-- 启动相关服务前，使用常规迁移工具执行本文件。
 
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS broker_order_id TEXT;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS trace_id TEXT;

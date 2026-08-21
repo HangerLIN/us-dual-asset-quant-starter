@@ -48,7 +48,7 @@ class BacktestResult:
 
 
 class DBBacktestRunner:
-    """Strategy-agnostic replay using the same runtime and OMS as paper/live."""
+    """使用通用运行时和模拟 OMS 完成与策略无关的历史回放。"""
 
     def __init__(
         self,
@@ -180,7 +180,7 @@ class DBBacktestRunner:
                 .where(
                     Bar1mEquity.symbol.in_(normalized_symbols),
                     Bar1mEquity.ts_end >= start,
-                    Bar1mEquity.ts_end <= end,
+                    Bar1mEquity.ts_end < end,
                 )
                 .order_by(Bar1mEquity.ts_end.asc(), Bar1mEquity.symbol.asc())
             )

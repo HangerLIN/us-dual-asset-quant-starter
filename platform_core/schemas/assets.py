@@ -12,6 +12,7 @@ class AssetType(str, Enum):
     EQUITY = "EQUITY"
     ETF = "ETF"
     OPTION = "OPTION"
+    COMBO = "COMBO"
 
 
 class InstrumentRef(BaseModel):
@@ -27,7 +28,8 @@ class InstrumentRef(BaseModel):
 
     @property
     def key(self) -> str:
-        """Stable identity used by orders, fills, positions, and reconciliation."""
+        """返回供订单、成交、持仓和对账共同使用的稳定标识。"""
+
         if self.conid is not None:
             return f"{self.asset_type.value}:CONID:{self.conid}"
         if self.asset_type == AssetType.OPTION:
@@ -53,13 +55,15 @@ class InstrumentRef(BaseModel):
 
     @property
     def multiplier(self) -> Decimal:
+        """返回显式乘数，期权未配置时默认使用 100。"""
+
         value = self.metadata.get("multiplier")
         if value is not None:
             return Decimal(str(value))
         return Decimal(100) if self.asset_type == AssetType.OPTION else Decimal(1)
 
     @model_validator(mode="after")
-    def validate_option_contract(self) -> InstrumentRef:
+    def validate_option_contract(self) -> "InstrumentRef":
         if self.asset_type == AssetType.OPTION:
             missing = [
                 name
@@ -72,24 +76,48 @@ class InstrumentRef(BaseModel):
             ]
             if missing:
                 raise ValueError(f"OPTION instrument missing fields: {', '.join(missing)}")
+        if self.asset_type == AssetType.COMBO:
+            legs = self.metadata.get("combo_legs")
+            if self.metadata.get("broker_unresolved_combo") is True and not legs:
+                return self
+            if not isinstance(legs, list) or len(legs) < 2:
+                raise ValueError("COMBO instrument requires at least two combo_legs")
+            for leg in legs:
+                if not isinstance(leg, dict) or int(leg.get("conid") or 0) <= 0:
+                    raise ValueError("each COMBO leg requires a positive conid")
+                if int(leg.get("ratio") or 0) <= 0:
+                    raise ValueError("each COMBO leg requires a positive ratio")
+                if str(leg.get("action", "")).upper() not in {"BUY", "SELL"}:
+                    raise ValueError("each COMBO leg action must be BUY or SELL")
         return self
 
 
 class MarketQuote(BaseModel):
     instrument: InstrumentRef
     quote_ts: datetime
-    bid: Decimal | None = Field(default=None, ge=0)
-    ask: Decimal | None = Field(default=None, ge=0)
-    mid: Decimal | None = Field(default=None, ge=0)
-    last: Decimal | None = Field(default=None, ge=0)
+    received_at: datetime | None = None
+    bid: Decimal | None = None
+    ask: Decimal | None = None
+    bid_size: Decimal | None = Field(default=None, ge=0)
+    ask_size: Decimal | None = Field(default=None, ge=0)
+    mid: Decimal | None = None
+    last: Decimal | None = None
     volume: int | None = Field(default=None, ge=0)
     open_interest: int | None = Field(default=None, ge=0)
     source: str = "ibkr"
+    market_data_type: int | None = None
+    timestamp_source: str = "broker"
+    halted_status: int | None = None
+    shortable: Decimal | None = None
 
     @model_validator(mode="after")
-    def derive_mid(self) -> MarketQuote:
+    def derive_mid(self) -> "MarketQuote":
+        if self.instrument.asset_type != AssetType.COMBO:
+            prices = (self.bid, self.ask, self.mid, self.last)
+            if any(price is not None and price < 0 for price in prices):
+                raise ValueError("non-combo market prices cannot be negative")
         if self.mid is None and self.bid is not None and self.ask is not None and self.ask >= self.bid:
-            self.mid = (self.bid + self.ask) / Decimal(2)
+            self.mid = (self.bid + self.ask) / Decimal("2")
         return self
 
     @property
@@ -100,9 +128,9 @@ class MarketQuote(BaseModel):
 
     @property
     def spread_pct(self) -> Decimal | None:
-        if self.mid is None or self.mid <= 0 or self.spread_abs is None:
+        if self.mid is None or self.mid == 0 or self.spread_abs is None:
             return None
-        return self.spread_abs / self.mid
+        return self.spread_abs / abs(self.mid)
 
 
 class BarEvent(BaseModel):

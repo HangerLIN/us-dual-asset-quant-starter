@@ -26,7 +26,7 @@ class InMemoryEventBus:
 
 
 class RedisStreamEventBus:
-    """Redis Streams publisher for splitting runtime services without changing events."""
+    """Redis Streams 发布器，用于在不改变事件契约的前提下拆分运行时服务。"""
 
     def __init__(self, redis_url: str, *, stream: str = "quant:events") -> None:
         from redis import Redis

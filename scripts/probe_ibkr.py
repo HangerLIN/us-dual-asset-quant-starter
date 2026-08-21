@@ -26,7 +26,7 @@ def main() -> None:
                 "status": "ok",
                 "host": settings.ib_host,
                 "port": settings.ib_port,
-                "client_id": settings.ib_client_id,
+                "client_id": settings.ib_market_data_client_id,
                 "contract_details_count": len(details),
                 "first_contract": details[0] if details else None,
                 "quote": quote.model_dump(),

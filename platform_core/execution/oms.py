@@ -18,7 +18,7 @@ from platform_core.schemas import (
 
 
 class OrderManager:
-    """Durable, idempotent boundary between the runtime and a broker."""
+    """回测运行时与模拟经纪商之间的持久化幂等边界。"""
 
     def __init__(self, *, session: Session, broker: BrokerAdapter) -> None:
         self.session = session
