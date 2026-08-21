@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 
 from _bootstrap import ROOT  # noqa: F401
 from _common import json_print, open_db, parse_symbols, parse_window
+
 from platform_core.core import get_settings
 from platform_core.data import (
     IngestionResult,
@@ -49,7 +50,7 @@ def main() -> None:
         record_progress(session, result, cursor=end.isoformat())
         session.commit()
         json_print(result)
-    except Exception as exc:  # noqa: BLE001 - CLI records failure details before surfacing.
+    except Exception as exc:
         session.rollback()
         result = IngestionResult(
             task_key=f"equity:{','.join(symbols)}:{start.date()}:{end.date()}",

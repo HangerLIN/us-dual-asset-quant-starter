@@ -1,5 +1,6 @@
+from platform_core.strategy import StrategyPlugin
+
 from .contracts import (
-    BacktestStrategyPlugin,
     CalibrationJob,
     CandidateSelector,
     DataIngestionAdapter,
@@ -8,11 +9,9 @@ from .contracts import (
     PerformanceReporter,
     PortfolioConstructor,
     RiskRulePlugin,
-    SignalPlugin,
 )
 
 __all__ = [
-    "BacktestStrategyPlugin",
     "CalibrationJob",
     "CandidateSelector",
     "DataIngestionAdapter",
@@ -21,5 +20,5 @@ __all__ = [
     "PerformanceReporter",
     "PortfolioConstructor",
     "RiskRulePlugin",
-    "SignalPlugin",
+    "StrategyPlugin",
 ]

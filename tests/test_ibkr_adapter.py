@@ -7,8 +7,8 @@ from platform_core.infra.ibkr import _duration, _expiry_yyyymmdd, _select_strike
 
 
 def test_ibkr_helper_selects_nearby_strikes() -> None:
-    strikes = _select_strikes([490, 495, 500, 505, 510], Decimal("501"), max_per_side=2)
-    assert strikes == [Decimal("495"), Decimal("500"), Decimal("505"), Decimal("510")]
+    strikes = _select_strikes([490, 495, 500, 505, 510], Decimal(501), max_per_side=2)
+    assert strikes == [Decimal(495), Decimal(500), Decimal(505), Decimal(510)]
 
 
 def test_ibkr_helper_formats_expiry() -> None:

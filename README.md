@@ -1,331 +1,247 @@
-# US Dual-Asset Quant Starter
+# Strategy-Agnostic US Quant Platform Starter
 
-Production-shaped starter for US equity, ETF, and option quantitative trading. This repository is intended to be a clean foundation you can copy into a new project and extend with your own strategies, execution policy, and deployment workflow.
+[English](README.md) | [简体中文](README.zh-CN.md)
 
-It is designed around one idea: live, paper, and backtest paths should share the same core object flow and data contracts, instead of growing into three separate systems that drift apart over time.
+A strategy-free foundation for researching, paper trading, and live trading US equities,
+ETFs, and options. Strategies live in separate Python packages and use one runtime contract
+across backtest, IBKR paper, and IBKR live modes.
 
-## What This Starter Covers
+This repository deliberately contains no alpha, entry rule, exit rule, or example strategy.
 
-- US asset support for `EQUITY`, `ETF`, and `OPTION`
-- Shared schemas for signals, portfolio decisions, execution requests, fills, and order lifecycle events
-- Local SQLite-friendly development path
-- Real IBKR adapter boundary for bars, quotes, option chain discovery, and option L1 history
-- SQLAlchemy models for market data, calibration, backtest runs, metrics, and execution artifacts
-- Small but real data-quality checks for equity minute coverage and option quote sanity
-- A DB-backed backtest runner that exercises signal -> portfolio -> risk -> execution style flows
-- Example strategies for equity-only, option-only, and dual-asset smoke coverage
-- Minimal service shells for `md_gw`, `signal_svc`, `risk_svc`, `exec_svc`, `pnl_svc`, and `backtest`
-
-This is a starter platform, not a finished alpha engine. The included strategies are there to prove plumbing, not edge.
-
-## Design Goals
-
-1. Keep the platform boundary clean.
-2. Make offline validation cheap and fast.
-3. Make the IBKR path real enough to expose integration issues early.
-4. Keep core workflows composable so strategy code can sit downstream from the platform.
-
-## Architecture
-
-The intended runtime flow is:
+## Runtime Flow
 
 ```text
-SignalEnvelope
+IBKR / historical database
+  -> MarketQuote / BarEvent
+  -> external StrategyPlugin
   -> PortfolioDecision
-  -> RiskCheckRequest
+  -> platform risk gate
   -> ExecutionRequest
-  -> ExecutionFill
-  -> BacktestOrderEvent / live execution state
+  -> durable OrderManager
+  -> SimulatedBroker / IBKR Paper / IBKR Live
+  -> BrokerOrderUpdate / ExecutionFill
+  -> positions, account state, database, event stream
 ```
 
-At a high level:
+The same `TradingEngine`, `OrderManager`, schemas, risk gate, and event types are used in all
+three modes. A strategy changes mode through deployment configuration, not strategy code.
 
-- `platform_core.schemas` defines the shared domain objects
-- `platform_core.data` handles ingestion, fixture loading, and quality checks
-- `platform_core.features` builds derived features
-- `platform_core.portfolio` turns candidates into allocations
-- `platform_core.risk` applies basic guards
-- `platform_core.execution` handles quote-aware request shaping
-- `platform_core.backtest` runs DB-backed simulations
-- `platform_core.reporting` summarizes outcomes
-- `platform_apps.*` gives you service entry points to extend into a fuller platform
+## Included Platform Capabilities
 
-## Repository Layout
+- External strategy SDK and `package.module:attribute` loader
+- Shared quote, bar, decision, risk, order, fill, account, and position schemas
+- Stable option identity using conid or full expiry/right/strike/multiplier fields
+- Strategy-agnostic DB replay through the production runtime path
+- Deterministic simulated broker for backtest and contract tests
+- IBKR market data, contract discovery, paper orders, live orders, cancellation, status,
+  executions, commission, account, position, and open-order recovery boundaries
+- Durable and idempotent OMS persistence through `client_order_id`
+- In-memory event bus for monolith development and Redis Streams publishing for service splits
+- Polling live quote feed and quote-to-bar aggregation
+- Data ingestion, fixtures, data-quality checks, SQLite development, and Postgres schema
+- Live-trading lock requiring both an enable flag and an exact confirmation value
 
-```text
-.
-├── examples/
-│   ├── dual_asset_momentum/
-│   ├── equity_momentum/
-│   └── option_momentum/
-├── infra/
-│   ├── docker-compose.yml
-│   └── prometheus/
-├── migrations/
-│   └── 0001_baseline.sql
-├── platform_apps/
-│   ├── backtest/
-│   ├── exec_svc/
-│   ├── md_gw/
-│   ├── pnl_svc/
-│   ├── risk_svc/
-│   └── signal_svc/
-├── platform_core/
-│   ├── backtest/
-│   ├── calibration/
-│   ├── core/
-│   ├── data/
-│   ├── db/
-│   ├── execution/
-│   ├── features/
-│   ├── infra/
-│   ├── plugins/
-│   ├── portfolio/
-│   ├── reporting/
-│   ├── risk/
-│   └── schemas/
-├── scripts/
-├── tests/
-├── .env.example
-├── pyproject.toml
-└── README.md
-```
+## Repository Boundaries
+
+The platform owns:
+
+- normalized market and execution events
+- strategy lifecycle and plugin loading
+- account/position context supplied to strategies
+- risk approval
+- order construction, submission, persistence, recovery, and reconciliation
+- backtest, paper, and live runtime wiring
+
+An external strategy package owns:
+
+- indicators and feature state specific to that strategy
+- entry and exit decisions
+- sizing intent expressed as `PortfolioDecision`
+- strategy parameters and versioning
 
 ## Quick Start
 
-### 1. Create a virtual environment
+Requires Python 3.11 or newer.
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"
-```
-
-### 2. Run the offline smoke
-
-```bash
+pip install -e ".[dev,ibkr]"
+pytest -q
 python scripts/run_smoke.py --mode offline
-pytest -q
 ```
 
-The offline smoke path:
+The smoke command validates fixture ingestion and data-quality processing without loading or
+executing a strategy.
 
-- creates local tables in SQLite
-- loads fixture equity and option data
-- runs quality checks
-- runs a dual-asset DB-backed backtest
-- prints a JSON summary report
+## External Strategy Contract
 
-This is the fastest way to verify the starter is healthy before you wire in real market data or infrastructure.
+A separate package can subclass `BaseStrategy` or implement `StrategyPlugin` directly:
 
-## Environment Configuration
+```python
+from platform_core.strategy import BaseStrategy, StrategyContext
 
-Copy the example file if you want to run with custom settings:
+
+class MyStrategy(BaseStrategy):
+    strategy_code = "my-strategy"
+    strategy_version = "0.1.0"
+
+    def __init__(self, parameters=None):
+        self.parameters = parameters or {}
+
+    def on_bar(self, event, context: StrategyContext):
+        # Return zero or more PortfolioDecision objects.
+        return []
+```
+
+The complete lifecycle also exposes `on_start`, `on_quote`, `on_order_update`, `on_fill`, and `on_stop`.
+`StrategyContext` contains the runtime mode, deployment parameters, latest quotes, broker
+positions, and account snapshot.
+
+Load paths use:
+
+```text
+my_strategy.package:MyStrategy
+```
+
+No strategy registration or source-code change is required in this repository.
+
+Create a separate empty strategy package quickly:
 
 ```bash
-cp .env.example .env
+python scripts/scaffold_strategy.py earnings-reversal --output-dir ../quant-strategies
 ```
 
-Important settings include:
+The generated package implements the lifecycle contract but contains no trading rule. Install
+the platform and generated package in the same environment, then use its import path with the
+backtest or runtime commands.
 
-- `DATABASE_URL`
-- `REDIS_URL`
-- `IB_HOST`
-- `IB_PORT`
-- `IB_CLIENT_ID`
-- `IB_ACCOUNT`
-- `SMOKE_SYMBOLS`
-- `SMOKE_DAYS`
-- `OPTION_DTE_MIN`
-- `OPTION_DTE_MAX`
-- `RISK_NOTIONAL_CAP`
-- `OPTION_SPREAD_PCT_MAX`
-- `ORDER_TTL_SECONDS`
+## Backtest an External Strategy
 
-Defaults are intentionally lightweight for local development. If you do not provide a `.env`, the starter falls back to local defaults, including `sqlite:///./starter.db`.
-
-## Running with IBKR
-
-The IBKR path is meant to validate integration boundaries, not historical options research on expired contracts.
-
-### Prerequisites
-
-- TWS or IB Gateway running and logged in
-- API access enabled
-- Postgres or Timescale-compatible database available if you do not want SQLite
-- Redis available if your extension work needs it
-
-### Install IBKR and Postgres extras
+First ingest or load historical data, then run:
 
 ```bash
-pip install -e ".[dev,ibkr,postgres]"
+python scripts/run_backtest.py \
+  --strategy my_strategy.package:MyStrategy \
+  --strategy-params '{"notional": 10000}' \
+  --track dual \
+  --symbols SPY \
+  --start 2026-05-27 \
+  --end 2026-05-27
 ```
 
-### Start local infrastructure
+The replay uses `TradingEngine -> risk -> OrderManager -> SimulatedBroker`, the same path used
+by paper/live after broker selection. Orders, fills, positions, events, PnL, fees, gross
+notional, and ending equity are persisted or reported.
+
+## IBKR Paper Runtime
+
+Run TWS or IB Gateway with API access enabled, then configure:
+
+```dotenv
+IB_HOST=127.0.0.1
+IB_PAPER_PORT=7497
+IB_PAPER_ACCOUNT=DU1234567
+IB_CLIENT_ID=11
+```
+
+Start an external strategy:
 
 ```bash
-docker compose -f infra/docker-compose.yml up -d postgres redis
+python scripts/run_runtime.py \
+  --mode paper \
+  --strategy my_strategy.package:MyStrategy \
+  --strategy-params '{"notional": 1000}' \
+  --symbols SPY \
+  --publish-redis
 ```
 
-### Initialize the database
+Use `--once` to process one snapshot per instrument as a connectivity/runtime probe.
+
+For options or precise contract identity, provide an instrument list:
 
 ```bash
-python scripts/init_db.py
+python scripts/run_runtime.py \
+  --mode paper \
+  --strategy my_strategy.package:MyStrategy \
+  --instruments-file instruments.json
 ```
 
-### Probe connectivity
+`instruments.json` is a JSON list matching the `InstrumentRef` schema, including option expiry,
+right, strike, conid when available, and optional multiplier metadata.
+
+## IBKR Live Runtime and Safety Lock
+
+Live mode is disabled by default. It requires a separate account/port plus two explicit gates:
+
+```dotenv
+IB_LIVE_PORT=7496
+IB_LIVE_ACCOUNT=U1234567
+ALLOW_LIVE_TRADING=true
+LIVE_TRADING_CONFIRMATION=I_UNDERSTAND_LIVE_ORDERS_ARE_REAL
+```
+
+Then the command is structurally identical:
 
 ```bash
-python scripts/probe_ibkr.py --symbol SPY
+python scripts/run_runtime.py \
+  --mode live \
+  --strategy my_strategy.package:MyStrategy \
+  --symbols SPY
 ```
 
-### Run IBKR smoke
+Keep paper and live accounts, databases, Redis streams, client IDs, secrets, and deployment
+credentials separate in real deployments.
 
-```bash
-python scripts/run_smoke.py --mode ibkr --symbols SPY --days 1 --track dual
-```
+## Data Flow and Services
 
-In `ibkr` mode the smoke will:
+Every runtime publishes normalized `PlatformEvent` objects such as:
 
-- ingest equity bars
-- probe for a recent non-expired option contract
-- ingest option chain metadata
-- attempt option L1 history
-- run quality checks
-- fall back to `equity` track if option data is not usable
+- `BAR_RECEIVED`
+- `QUOTE_RECEIVED`
+- `PORTFOLIO_DECISION`
+- `RISK_REJECTED`
+- `ORDER_SUBMITTED`
+- `ORDER_UPDATE`
+- `FILL`
 
-That fallback behavior is intentional. It keeps the smoke useful even when option coverage is incomplete.
+Local development uses `InMemoryEventBus`. `RedisStreamEventBus` publishes the same event
+envelope to `quant:events`, allowing market-data, strategy, risk, execution, and PnL services to
+be split later without changing strategy code.
 
-## Common Commands
+The FastAPI packages under `platform_apps/` remain deployment entry-point shells. The working
+single-process reference runtime is `platform_apps.runtime.main` / `scripts/run_runtime.py`.
 
-### Initialize DB
+## Database and Migrations
 
-```bash
-python scripts/init_db.py
-```
+- `migrations/0001_baseline.sql` creates a fresh schema.
+- `migrations/0002_strategy_agnostic_runtime.sql` upgrades the original starter execution tables.
+- SQLite development uses SQLAlchemy `create_all`; production Postgres should apply migrations
+  before starting paper/live services.
 
-### Ingest equity bars
+Execution persistence includes runtime mode, account, trace ID, client and broker order IDs,
+full instrument identity, order state, fills, fees, and contract-aware positions.
 
-```bash
-python scripts/ingest_equity.py --symbols SPY,QQQ --start 2026-05-27 --end 2026-05-27
-```
-
-### Ingest option chain
-
-```bash
-python scripts/ingest_option_chain.py --symbols SPY --as-of 2026-05-27 --dte-min 7 --dte-max 45
-```
-
-### Ingest option L1
-
-```bash
-python scripts/ingest_option_l1.py --symbols SPY --start 2026-05-27 --end 2026-05-27
-```
-
-### Recompute features
-
-```bash
-python scripts/recompute_features.py
-```
-
-### Run quality checks
-
-```bash
-python scripts/run_quality_check.py --symbols SPY --start 2026-05-27 --end 2026-05-27
-```
-
-### Run backtest
-
-```bash
-python scripts/run_backtest.py --track dual --symbols SPY --start 2026-05-27 --end 2026-05-27
-```
-
-### Run calibration
-
-```bash
-python scripts/run_calibration.py
-```
-
-## Smoke Modes
-
-There are two intended smoke modes:
-
-### `offline`
-
-- no IBKR required
-- uses fixture data
-- uses local DB defaults
-- best for CI, onboarding, and platform sanity checks
-
-### `ibkr`
-
-- uses the real IBKR adapter
-- validates contract discovery and quote plumbing
-- useful for catching connectivity and market-data entitlement issues
-
-If you are extending the platform, start every major change by keeping `offline` green.
-
-## Testing
-
-Run the full test suite:
+## Development Gates
 
 ```bash
 pytest -q
-```
-
-The test suite covers:
-
-- smoke flow
-- data pipeline pieces
-- calibration persistence
-- IBKR adapter boundaries
-
-This is still a starter suite, so add deeper tests as your production rules evolve.
-
-## Development Notes
-
-### Packaging
-
-The project uses `setuptools` with editable installs via `pip install -e`.
-
-### Python Version
-
-- Python `>= 3.11`
-
-### Linting
-
-`ruff` is included in the `dev` dependency group:
-
-```bash
 ruff check .
+python -m compileall -q platform_core platform_apps scripts tests
 ```
 
-### Dependency Groups
+Before promoting a strategy to live, add strategy-package tests for deterministic replay,
+out-of-sample validation, paper-session reconciliation, restart recovery, risk rejection,
+partial fills, and disconnect behavior. The platform safety lock prevents accidental live
+startup; it does not prove a strategy is safe or profitable.
 
-- `dev`: test and lint tooling
-- `ibkr`: Interactive Brokers API support
-- `postgres`: Psycopg support for Postgres or Timescale
+## Known Starter Boundaries
 
-## Extending the Starter
-
-Typical ways to evolve this starter:
-
-1. Add your own strategy package under `examples/` first, then move it into a dedicated downstream package.
-2. Replace the simple risk rules with strategy-aware and portfolio-aware controls.
-3. Add real signal engines and portfolio ranking logic.
-4. Expand the DB schema for your execution, audit, and analytics needs.
-5. Replace or extend the service shells under `platform_apps/` with your actual runtime services.
-
-## Known Boundaries
-
-- Included strategies are smoke examples, not production alpha.
-- Historical data expectations are intentionally modest.
-- The starter is shaped for clarity and reuse, not maximum throughput.
-- Real deployment, secret management, CI/CD, and production observability still need to be layered on top.
-- Historical bars for expired options are not the target of the bundled IBKR smoke flow.
-
-## Why This Exists
-
-Most trading projects rot when research code, live code, and backtest code diverge too early. This repository is meant to give you a cleaner starting point: one platform core, one set of contracts, and one place to extend from.
-
-If you want a strategy-specific repository later, this starter should stay small and stable while that downstream repo carries the faster-moving alpha logic.
+- IBKR integration requires TWS/Gateway and the appropriate market-data permissions.
+- Live quotes currently use a replaceable polling feed; high-frequency use should supply a
+  streaming adapter behind the same normalized event contracts.
+- The backtest broker is intentionally deterministic and basic; advanced slippage, exchange
+  queueing, assignment, exercise, margin, and corporate-action models belong in replaceable
+  simulation components.
+- Production deployment still needs organization-specific secrets management, alerting,
+  dashboards, CI/CD, and infrastructure definitions.

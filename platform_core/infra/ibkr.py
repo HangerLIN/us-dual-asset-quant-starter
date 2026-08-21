@@ -1,17 +1,18 @@
 from __future__ import annotations
 
+import socket
+from collections.abc import Sequence
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from math import ceil
-import socket
-from contextlib import suppress
 from threading import Event, Lock, Thread
 from time import sleep, time
-from typing import Any, Sequence
+from typing import Any
 
 from platform_core.core import get_settings
-from platform_core.schemas import BarEvent, MarketQuote
+from platform_core.schemas import BarEvent, ExecutionRequest, MarketQuote
 from platform_core.schemas.assets import AssetType, InstrumentRef
 
 
@@ -221,6 +222,32 @@ class IBKRAdapter:
             )
         return output
 
+    def submit_order(self, request: ExecutionRequest, *, account_id: str) -> int:
+        """Submit an already risk-approved request to the configured IBKR session."""
+        client = self._ensure_client()
+        return client.submit_order(
+            contract=_contract_for_instrument(request.instrument),
+            order=_ib_order(request, account_id=account_id),
+        )
+
+    def cancel_order(self, broker_order_id: int) -> None:
+        self._ensure_client().cancel_order(broker_order_id)
+
+    def order_updates(self) -> list[dict[str, Any]]:
+        return self._ensure_client().order_updates()
+
+    def execution_updates(self) -> list[dict[str, Any]]:
+        return self._ensure_client().execution_updates()
+
+    def account_positions(self, *, account_id: str) -> list[dict[str, Any]]:
+        return self._ensure_client().request_positions(account_id=account_id)
+
+    def account_values(self, *, account_id: str) -> dict[str, str]:
+        return self._ensure_client().request_account_summary(account_id=account_id)
+
+    def open_orders(self) -> list[dict[str, Any]]:
+        return self._ensure_client().request_open_orders()
+
     def option_chain(
         self,
         symbol: str,
@@ -285,7 +312,7 @@ class IBKRAdapter:
                         sleep(self.config.pacing_sleep_seconds)
         return contracts
 
-    def _ensure_client(self) -> "_IBApiClient":
+    def _ensure_client(self) -> _IBApiClient:
         if self._client is None or not self._client.isConnected():
             self.connect()
         assert self._client is not None
@@ -317,6 +344,7 @@ class _IBApiClient(*_ibapi_base_classes()):
         client.__init__(self, self)
         self.timeout_seconds = timeout_seconds
         self._next_req_id = 1000
+        self._next_order_id: int | None = None
         self._lock = Lock()
         self._connected_event = Event()
         self._historical: dict[int, list[dict[str, Any]]] = {}
@@ -327,12 +355,117 @@ class _IBApiClient(*_ibapi_base_classes()):
         self._contract_details_done: dict[int, Event] = {}
         self._option_params: dict[int, list[dict[str, Any]]] = {}
         self._option_params_done: dict[int, Event] = {}
+        self._order_updates: list[dict[str, Any]] = []
+        self._submitted_order_ids: set[int] = set()
+        self._open_orders: list[dict[str, Any]] = []
+        self._open_orders_done = Event()
+        self._execution_updates: list[dict[str, Any]] = []
+        self._delivered_execution_ids: set[str] = set()
+        self._positions: list[dict[str, Any]] = []
+        self._positions_done = Event()
+        self._account_values: dict[int, dict[str, str]] = {}
+        self._account_values_done: dict[int, Event] = {}
+        self._account_value_filters: dict[int, str] = {}
         self.errors: list[tuple[int, int | None, int, str]] = []
 
-    def nextValidId(self, orderId: int) -> None:  # noqa: N802 - ibapi callback name.
+    def nextValidId(self, orderId: int) -> None:
+        self._next_order_id = int(orderId)
         self._connected_event.set()
 
-    def error(  # noqa: N802
+    def orderStatus(
+        self,
+        orderId: int,
+        status: str,
+        filled: float,
+        remaining: float,
+        avgFillPrice: float,
+        permId: int,
+        parentId: int,
+        lastFillPrice: float,
+        clientId: int,
+        whyHeld: str,
+        mktCapPrice: float = 0.0,
+    ) -> None:
+        self._order_updates.append(
+            {
+                "broker_order_id": int(orderId),
+                "status": status,
+                "filled": filled,
+                "remaining": remaining,
+                "average_fill_price": avgFillPrice,
+                "last_fill_price": lastFillPrice,
+                "message": whyHeld or None,
+            }
+        )
+
+    def execDetails(self, reqId: int, contract: Any, execution: Any) -> None:
+        self._execution_updates.append(
+            {
+                "broker_order_id": int(execution.orderId),
+                "execution_id": str(execution.execId),
+                "quantity": execution.shares,
+                "fill_price": execution.price,
+                "filled_at": str(execution.time),
+                "side": str(execution.side),
+                "commission": None,
+            }
+        )
+
+    def openOrder(
+        self,
+        orderId: int,
+        contract: Any,
+        order: Any,
+        orderState: Any,
+    ) -> None:
+        self._open_orders.append(
+            {
+                "broker_order_id": int(orderId),
+                "contract": contract,
+                "order": order,
+                "status": str(getattr(orderState, "status", "Submitted")),
+            }
+        )
+
+    def openOrderEnd(self) -> None:
+        self._open_orders_done.set()
+
+    def commissionReport(self, commissionReport: Any) -> None:
+        execution_id = str(commissionReport.execId)
+        for execution in reversed(self._execution_updates):
+            if execution["execution_id"] == execution_id:
+                execution["commission"] = commissionReport.commission
+                break
+
+    def position(self, account: str, contract: Any, position: float, avgCost: float) -> None:
+        self._positions.append(
+            {
+                "account_id": account,
+                "contract": contract,
+                "quantity": position,
+                "average_cost": avgCost,
+            }
+        )
+
+    def positionEnd(self) -> None:
+        self._positions_done.set()
+
+    def accountSummary(
+        self,
+        reqId: int,
+        account: str,
+        tag: str,
+        value: str,
+        currency: str,
+    ) -> None:
+        if account != self._account_value_filters.get(reqId):
+            return
+        self._account_values.setdefault(reqId, {})[tag] = value
+
+    def accountSummaryEnd(self, reqId: int) -> None:
+        self._account_values_done[reqId].set()
+
+    def error(
         self,
         reqId: int,
         errorTime: int | None = None,
@@ -348,9 +481,21 @@ class _IBApiClient(*_ibapi_base_classes()):
         normalized_code = int(errorCode or -1)
         normalized_text = str(errorString or "")
         self.errors.append((int(reqId), errorTime, normalized_code, normalized_text))
+        if int(reqId) in self._submitted_order_ids:
+            self._order_updates.append(
+                {
+                    "broker_order_id": int(reqId),
+                    "status": "Rejected",
+                    "filled": 0,
+                    "remaining": 0,
+                    "average_fill_price": 0,
+                    "last_fill_price": 0,
+                    "message": f"{normalized_code}:{normalized_text}",
+                }
+            )
         self._complete_on_error(int(reqId), normalized_code, normalized_text)
 
-    def historicalData(self, reqId: int, bar: Any) -> None:  # noqa: N802
+    def historicalData(self, reqId: int, bar: Any) -> None:
         self._historical.setdefault(reqId, []).append(
             {
                 "date": bar.date,
@@ -363,30 +508,30 @@ class _IBApiClient(*_ibapi_base_classes()):
             }
         )
 
-    def historicalDataEnd(self, reqId: int, start: str, end: str) -> None:  # noqa: N802
+    def historicalDataEnd(self, reqId: int, start: str, end: str) -> None:
         self._historical_done[reqId].set()
 
-    def tickPrice(self, reqId: int, tickType: int, price: float, attrib: Any) -> None:  # noqa: N802
+    def tickPrice(self, reqId: int, tickType: int, price: float, attrib: Any) -> None:
         if price is None or price < 0:
             return
         field = {1: "bid", 2: "ask", 4: "last", 9: "close"}.get(tickType)
         if field:
             self._snapshots.setdefault(reqId, {})[field] = price
 
-    def tickSize(self, reqId: int, tickType: int, size: int) -> None:  # noqa: N802
+    def tickSize(self, reqId: int, tickType: int, size: int) -> None:
         if tickType in {8, 27, 29}:
             self._snapshots.setdefault(reqId, {})["volume"] = size
 
-    def tickSnapshotEnd(self, reqId: int) -> None:  # noqa: N802
+    def tickSnapshotEnd(self, reqId: int) -> None:
         self._snapshot_done[reqId].set()
 
-    def contractDetails(self, reqId: int, contractDetails: Any) -> None:  # noqa: N802
+    def contractDetails(self, reqId: int, contractDetails: Any) -> None:
         self._contract_details.setdefault(reqId, []).append(contractDetails)
 
-    def contractDetailsEnd(self, reqId: int) -> None:  # noqa: N802
+    def contractDetailsEnd(self, reqId: int) -> None:
         self._contract_details_done[reqId].set()
 
-    def securityDefinitionOptionParameter(  # noqa: N802
+    def securityDefinitionOptionParameter(
         self,
         reqId: int,
         exchange: str,
@@ -407,7 +552,7 @@ class _IBApiClient(*_ibapi_base_classes()):
             }
         )
 
-    def securityDefinitionOptionParameterEnd(self, reqId: int) -> None:  # noqa: N802
+    def securityDefinitionOptionParameterEnd(self, reqId: int) -> None:
         self._option_params_done[reqId].set()
 
     def wait_connected(self) -> None:
@@ -417,7 +562,7 @@ class _IBApiClient(*_ibapi_base_classes()):
                 raise TimeoutError(f"IBKR connection timed out before nextValidId: {detail}")
             raise TimeoutError("IBKR connection timed out before nextValidId")
 
-    def currentTime(self, time_: int) -> None:  # noqa: N802
+    def currentTime(self, time_: int) -> None:
         return None
 
     def request_historical_bars(
@@ -473,6 +618,65 @@ class _IBApiClient(*_ibapi_base_classes()):
         self.reqSecDefOptParams(req_id, symbol, "", underlying_sec_type, underlying_conid)
         self._wait(self._option_params_done[req_id], "option parameters")
         return self._option_params.pop(req_id, [])
+
+    def submit_order(self, *, contract: Any, order: Any) -> int:
+        with self._lock:
+            if self._next_order_id is None:
+                raise RuntimeError("IBKR has not supplied a valid order id")
+            order_id = self._next_order_id
+            self._next_order_id += 1
+            self._submitted_order_ids.add(order_id)
+        self.placeOrder(order_id, contract, order)
+        return order_id
+
+    def cancel_order(self, broker_order_id: int) -> None:
+        self.cancelOrder(int(broker_order_id))
+
+    def order_updates(self) -> list[dict[str, Any]]:
+        with self._lock:
+            updates = list(self._order_updates)
+            self._order_updates.clear()
+        return updates
+
+    def execution_updates(self) -> list[dict[str, Any]]:
+        with self._lock:
+            updates = [
+                dict(item)
+                for item in self._execution_updates
+                if item["commission"] is not None
+                and item["execution_id"] not in self._delivered_execution_ids
+            ]
+            self._delivered_execution_ids.update(item["execution_id"] for item in updates)
+        return updates
+
+    def request_positions(self, *, account_id: str) -> list[dict[str, Any]]:
+        self._positions = []
+        self._positions_done.clear()
+        self.reqPositions()
+        self._wait(self._positions_done, "positions")
+        self.cancelPositions()
+        return [item for item in self._positions if item["account_id"] == account_id]
+
+    def request_account_summary(self, *, account_id: str) -> dict[str, str]:
+        req_id = self._next_id()
+        self._account_values_done[req_id] = Event()
+        self._account_value_filters[req_id] = account_id
+        self.reqAccountSummary(
+            req_id,
+            "All",
+            "NetLiquidation,TotalCashValue,BuyingPower,RealizedPnL,UnrealizedPnL",
+        )
+        self._wait(self._account_values_done[req_id], "account summary")
+        self.cancelAccountSummary(req_id)
+        self._account_value_filters.pop(req_id, None)
+        return self._account_values.pop(req_id, {})
+
+    def request_open_orders(self) -> list[dict[str, Any]]:
+        self._open_orders = []
+        self._open_orders_done.clear()
+        self.reqOpenOrders()
+        self._wait(self._open_orders_done, "open orders")
+        return list(self._open_orders)
 
     def _next_id(self) -> int:
         with self._lock:
@@ -588,6 +792,23 @@ def _contract_for_instrument(instrument: InstrumentRef) -> Any:
     return _stock_contract(instrument.symbol)
 
 
+def _ib_order(request: ExecutionRequest, *, account_id: str) -> Any:
+    try:
+        from ibapi.order import Order
+    except ImportError as exc:
+        raise RuntimeError("Install the 'ibkr' extra to submit orders") from exc
+    order = Order()
+    order.account = account_id
+    order.action = request.side
+    order.orderType = "LMT"
+    order.totalQuantity = float(request.quantity)
+    order.lmtPrice = float(request.limit_price)
+    order.tif = request.tif
+    order.transmit = True
+    order.orderRef = request.client_order_id or request.trace_id or request.strategy_code
+    return order
+
+
 def _contract_class() -> type:
     try:
         from ibapi.contract import Contract
@@ -626,7 +847,7 @@ def _parse_ib_datetime(value: Any) -> datetime:
 
 
 def _parse_expiry(value: str) -> date:
-    return datetime.strptime(value, "%Y%m%d").date()
+    return date.fromisoformat(f"{value[:4]}-{value[4:6]}-{value[6:8]}")
 
 
 def _expiry_yyyymmdd(value: Any) -> str:

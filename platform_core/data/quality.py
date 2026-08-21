@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
-from typing import Any, Iterable, Sequence
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -217,7 +218,7 @@ def _wide_spread_count(session: Session, *, symbol: str, start: datetime, end: d
             continue
         effective_mid = mid
         if effective_mid is None and ask >= bid:
-            effective_mid = (ask + bid) / Decimal("2")
+            effective_mid = (ask + bid) / Decimal(2)
         if effective_mid is None or effective_mid <= 0:
             continue
         if (ask - bid) / effective_mid > limit:

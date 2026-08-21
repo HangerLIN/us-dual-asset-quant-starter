@@ -14,12 +14,15 @@ from .quality import (
     check_minute_coverage,
     persist_quality_report,
 )
+from .streaming import IBKRPollingQuoteFeed, QuoteBarAggregator
 
 __all__ = [
     "CoverageResult",
+    "IBKRPollingQuoteFeed",
     "IngestionResult",
     "QualityCheckResult",
     "QualityReport",
+    "QuoteBarAggregator",
     "build_quality_report",
     "check_minute_coverage",
     "persist_quality_report",

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 from sqlalchemy.engine import Engine
 
@@ -48,7 +49,7 @@ def parse_window(
 def parse_datetime(value: str, *, default_time: time) -> datetime:
     if "T" not in value and " " not in value:
         return datetime.combine(date.fromisoformat(value), default_time, tzinfo=UTC)
-    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    parsed = datetime.fromisoformat(value)
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=UTC)
     return parsed.astimezone(UTC)

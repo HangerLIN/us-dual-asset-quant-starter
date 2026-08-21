@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from decimal import Decimal
-from typing import Iterable, Mapping
 
 
 def summarize_fills(fills: Iterable[Mapping[str, object]]) -> dict[str, object]:
-    total_fees = Decimal("0")
-    gross_notional = Decimal("0")
+    total_fees = Decimal(0)
+    gross_notional = Decimal(0)
     count = 0
     by_asset: dict[str, int] = {}
     for fill in fills:
