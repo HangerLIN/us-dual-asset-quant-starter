@@ -83,21 +83,38 @@ CREATE TABLE IF NOT EXISTS data_quality_reports (
 CREATE TABLE IF NOT EXISTS orders (
   order_id BIGSERIAL PRIMARY KEY,
   client_order_id TEXT NOT NULL UNIQUE,
+  broker_order_id TEXT,
+  trace_id TEXT,
+  runtime_mode TEXT NOT NULL,
+  account_id TEXT NOT NULL,
   strategy_code TEXT NOT NULL,
+  instrument_key TEXT NOT NULL,
   asset_type TEXT NOT NULL,
   symbol TEXT NOT NULL,
+  conid BIGINT,
+  expiry DATE,
+  option_right TEXT,
+  strike NUMERIC(18, 6),
+  multiplier NUMERIC(18, 6) NOT NULL DEFAULT 1,
   side TEXT NOT NULL,
   quantity NUMERIC(18, 6) NOT NULL,
   limit_price NUMERIC(18, 6),
+  tif TEXT NOT NULL DEFAULT 'DAY',
   status TEXT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  error_message TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS fills (
   fill_id BIGSERIAL PRIMARY KEY,
   order_id BIGINT NOT NULL REFERENCES orders(order_id),
+  execution_id TEXT NOT NULL UNIQUE,
+  instrument_key TEXT NOT NULL,
   asset_type TEXT NOT NULL,
   symbol TEXT NOT NULL,
+  conid BIGINT,
   side TEXT NOT NULL,
   quantity NUMERIC(18, 6) NOT NULL,
   fill_price NUMERIC(18, 6) NOT NULL,
@@ -107,13 +124,19 @@ CREATE TABLE IF NOT EXISTS fills (
 
 CREATE TABLE IF NOT EXISTS positions (
   strategy_code TEXT NOT NULL,
+  instrument_key TEXT NOT NULL,
   asset_type TEXT NOT NULL,
   symbol TEXT NOT NULL,
+  conid BIGINT,
+  expiry DATE,
+  option_right TEXT,
+  strike NUMERIC(18, 6),
+  multiplier NUMERIC(18, 6) NOT NULL DEFAULT 1,
   quantity NUMERIC(18, 6) NOT NULL,
   avg_price NUMERIC(18, 6) NOT NULL,
   mark_price NUMERIC(18, 6) NOT NULL,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  PRIMARY KEY (strategy_code, asset_type, symbol)
+  PRIMARY KEY (strategy_code, instrument_key)
 );
 
 CREATE TABLE IF NOT EXISTS risk_limits (

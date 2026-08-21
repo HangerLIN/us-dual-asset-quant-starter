@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from decimal import Decimal, ROUND_DOWN
-from typing import Any, Mapping, Sequence
+from decimal import ROUND_DOWN, Decimal
+from typing import Any
 
 from platform_core.schemas import PortfolioDecision, SignalEnvelope
 from platform_core.schemas.assets import AssetType
@@ -14,7 +15,7 @@ class AllocationBudget:
     total_notional: Decimal
     max_symbol_notional: Decimal | None = None
     max_asset_notional: dict[AssetType, Decimal] = field(default_factory=dict)
-    reserve_cash: Decimal = Decimal("0")
+    reserve_cash: Decimal = Decimal(0)
 
 
 class TopRankCandidateSelector:
@@ -48,7 +49,7 @@ class EqualWeightPortfolioConstructor:
     ) -> list[PortfolioDecision]:
         selected = self.selector.select(signals, limit=self.max_candidates)
         decisions: list[PortfolioDecision] = []
-        available = max(Decimal("0"), self.budget.total_notional - self.budget.reserve_cash)
+        available = max(Decimal(0), self.budget.total_notional - self.budget.reserve_cash)
         count = max(1, len(selected))
         for signal in selected:
             price = Decimal(str(prices.get(signal.instrument.symbol.upper(), "0")))
@@ -61,7 +62,7 @@ class EqualWeightPortfolioConstructor:
             if asset_cap is not None:
                 notional = min(notional, asset_cap / Decimal(count))
             unit_notional = price * _asset_multiplier(signal.instrument.asset_type)
-            quantity = (notional / unit_notional).quantize(Decimal("1"), rounding=ROUND_DOWN)
+            quantity = (notional / unit_notional).quantize(Decimal(1), rounding=ROUND_DOWN)
             if quantity <= 0:
                 continue
             decisions.append(
@@ -80,4 +81,4 @@ class EqualWeightPortfolioConstructor:
 
 
 def _asset_multiplier(asset_type: AssetType) -> Decimal:
-    return Decimal("100") if asset_type == AssetType.OPTION else Decimal("1")
+    return Decimal(100) if asset_type == AssetType.OPTION else Decimal(1)

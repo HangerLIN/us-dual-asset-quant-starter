@@ -4,6 +4,7 @@ import argparse
 
 from _bootstrap import ROOT  # noqa: F401
 from _common import init_db, json_print
+
 from platform_core.db import get_engine
 
 

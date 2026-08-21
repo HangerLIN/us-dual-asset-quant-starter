@@ -4,6 +4,7 @@ import argparse
 
 from _bootstrap import ROOT  # noqa: F401
 from _common import json_print
+
 from platform_core.core import get_settings
 from platform_core.infra import IBKRAdapter
 from platform_core.schemas.assets import AssetType, InstrumentRef

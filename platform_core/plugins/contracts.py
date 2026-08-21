@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from datetime import datetime
-from typing import Any, Iterable, Mapping, Protocol, Sequence
+from typing import Any, Protocol
 
 import pandas as pd
 
 from platform_core.schemas import (
-    BarEvent,
     ExecutionRequest,
     InstrumentRef,
     MarketQuote,
@@ -45,19 +45,6 @@ class CalibrationJob(Protocol):
         ...
 
 
-class SignalPlugin(Protocol):
-    strategy_code: str
-
-    def process_bar(
-        self,
-        event: BarEvent,
-        *,
-        features: Mapping[str, Any],
-        context: Mapping[str, Any] | None = None,
-    ) -> list[SignalEnvelope]:
-        ...
-
-
 class CandidateSelector(Protocol):
     def select(self, signals: Sequence[SignalEnvelope], *, limit: int | None = None) -> list[SignalEnvelope]:
         ...
@@ -87,18 +74,6 @@ class ExecutionSelectionPlugin(Protocol):
         quote: MarketQuote | None = None,
         context: Mapping[str, Any] | None = None,
     ) -> ExecutionRequest:
-        ...
-
-
-class BacktestStrategyPlugin(Protocol):
-    def replay(
-        self,
-        *,
-        start: datetime,
-        end: datetime,
-        symbols: Sequence[str],
-        context: Mapping[str, Any] | None = None,
-    ) -> Iterable[SignalEnvelope]:
         ...
 
 

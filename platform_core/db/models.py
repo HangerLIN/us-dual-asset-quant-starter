@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Date, DateTime, ForeignKey, JSON, Numeric, String, Text, func
+from sqlalchemy import JSON, Date, DateTime, ForeignKey, Numeric, String, Text, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -108,14 +108,30 @@ class Order(Base):
 
     order_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     client_order_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    broker_order_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    trace_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    runtime_mode: Mapped[str] = mapped_column(String(16), nullable=False)
+    account_id: Mapped[str] = mapped_column(String(64), nullable=False)
     strategy_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    instrument_key: Mapped[str] = mapped_column(String(192), nullable=False)
     asset_type: Mapped[str] = mapped_column(String(16), nullable=False)
     symbol: Mapped[str] = mapped_column(String(32), nullable=False)
+    conid: Mapped[int | None] = mapped_column(nullable=True)
+    expiry: Mapped[date | None] = mapped_column(Date, nullable=True)
+    option_right: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    strike: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
+    multiplier: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False, default=Decimal(1))
     side: Mapped[str] = mapped_column(String(8), nullable=False)
     quantity: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
     limit_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
+    tif: Mapped[str] = mapped_column(String(16), nullable=False, default="DAY")
     status: Mapped[str] = mapped_column(String(32), nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
 
 class Fill(Base):
@@ -123,21 +139,30 @@ class Fill(Base):
 
     fill_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     order_id: Mapped[int] = mapped_column(ForeignKey("orders.order_id"), nullable=False)
+    execution_id: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    instrument_key: Mapped[str] = mapped_column(String(192), nullable=False)
     asset_type: Mapped[str] = mapped_column(String(16), nullable=False)
     symbol: Mapped[str] = mapped_column(String(32), nullable=False)
+    conid: Mapped[int | None] = mapped_column(nullable=True)
     side: Mapped[str] = mapped_column(String(8), nullable=False)
     quantity: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
     fill_price: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
     filled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    fees: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False, default=Decimal("0"))
+    fees: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False, default=Decimal(0))
 
 
 class Position(Base):
     __tablename__ = "positions"
 
     strategy_code: Mapped[str] = mapped_column(String(64), primary_key=True)
-    asset_type: Mapped[str] = mapped_column(String(16), primary_key=True)
-    symbol: Mapped[str] = mapped_column(String(32), primary_key=True)
+    instrument_key: Mapped[str] = mapped_column(String(192), primary_key=True)
+    asset_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    symbol: Mapped[str] = mapped_column(String(32), nullable=False)
+    conid: Mapped[int | None] = mapped_column(nullable=True)
+    expiry: Mapped[date | None] = mapped_column(Date, nullable=True)
+    option_right: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    strike: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
+    multiplier: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False, default=Decimal(1))
     quantity: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
     avg_price: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
     mark_price: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
-from typing import Sequence
 
 from platform_core.schemas import BarEvent, MarketQuote
 from platform_core.schemas.assets import AssetType, InstrumentRef
@@ -30,9 +30,9 @@ def build_fixture_dataset(symbols: Sequence[str] | None = None, *, trade_date: d
     for symbol_index, symbol in enumerate(selected_symbols):
         asset_type = AssetType.ETF if symbol in {"SPY", "QQQ", "IWM"} else AssetType.EQUITY
         instrument = InstrumentRef(asset_type=asset_type, symbol=symbol)
-        base = Decimal("500") + Decimal(symbol_index * 20)
-        running_vwap = Decimal("0")
-        running_volume = Decimal("0")
+        base = Decimal(500) + Decimal(symbol_index * 20)
+        running_vwap = Decimal(0)
+        running_volume = Decimal(0)
         for minute in range(390):
             ts_end = start + timedelta(minutes=minute)
             open_price = base + Decimal(minute) * Decimal("0.015")
@@ -40,7 +40,7 @@ def build_fixture_dataset(symbols: Sequence[str] | None = None, *, trade_date: d
             high = close_price + Decimal("0.04")
             low = open_price - Decimal("0.04")
             volume = 100_000 + minute * 100
-            typical = (high + low + close_price) / Decimal("3")
+            typical = (high + low + close_price) / Decimal(3)
             running_vwap += typical * Decimal(volume)
             running_volume += Decimal(volume)
             equity_bars.append(
@@ -57,7 +57,7 @@ def build_fixture_dataset(symbols: Sequence[str] | None = None, *, trade_date: d
                 )
             )
         expiry = session_date + timedelta(days=30)
-        strike = (base / Decimal("5")).quantize(Decimal("1")) * Decimal("5")
+        strike = (base / Decimal(5)).quantize(Decimal(1)) * Decimal(5)
         option = InstrumentRef(
             asset_type=AssetType.OPTION,
             symbol=symbol,
@@ -78,7 +78,7 @@ def build_fixture_dataset(symbols: Sequence[str] | None = None, *, trade_date: d
                     quote_ts=ts_end,
                     bid=bid,
                     ask=ask,
-                    last=(bid + ask) / Decimal("2"),
+                    last=(bid + ask) / Decimal(2),
                     volume=100 + minute,
                     open_interest=1000,
                     source="fixture",

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import json
 from datetime import UTC, datetime
 from decimal import Decimal
 
 try:
-    from _bootstrap import ROOT  # noqa: F401
+    from _bootstrap import ROOT
     from _common import json_print, open_db, parse_symbols, parse_window, write_json
 except ModuleNotFoundError:  # pragma: no cover - used when imported as scripts.run_smoke in tests.
     from scripts._bootstrap import ROOT  # noqa: F401
@@ -26,6 +27,7 @@ from platform_core.data.fixtures import build_fixture_dataset
 from platform_core.infra import IBKRAdapter
 from platform_core.risk import BasicRiskEngine
 from platform_core.schemas.assets import AssetType
+from platform_core.strategy import load_strategy
 
 
 def main() -> None:
@@ -41,6 +43,12 @@ def main() -> None:
     parser.add_argument("--dte-min", type=int, default=settings.option_dte_min)
     parser.add_argument("--dte-max", type=int, default=settings.option_dte_max)
     parser.add_argument("--report-path", default=None)
+    parser.add_argument(
+        "--strategy",
+        default=None,
+        help="Optional external package.module:attribute; no strategy is bundled.",
+    )
+    parser.add_argument("--strategy-params", default="{}", help="JSON object")
     args = parser.parse_args()
 
     symbols = parse_symbols(args.symbols)
@@ -71,26 +79,36 @@ def main() -> None:
             option_spread_pct_max=Decimal(str(settings.option_spread_pct_max)),
         )
         persist_quality_report(session, quality)
-        runner = DBBacktestRunner(
-            session=session,
-            risk=BasicRiskEngine(
-                notional_cap=Decimal(str(settings.risk_notional_cap)),
-                option_spread_pct_max=Decimal(str(settings.option_spread_pct_max)),
-            ),
-        )
-        backtest = runner.run(
-            start=start,
-            end=end,
-            symbols=symbols,
-            track=args.track,
-            calibration_version=settings.default_calibration_version,
-        )
+        backtest = None
+        if args.strategy:
+            parameters = json.loads(args.strategy_params)
+            if not isinstance(parameters, dict):
+                raise TypeError("--strategy-params must decode to a JSON object")
+            strategy = load_strategy(args.strategy, parameters)
+            runner = DBBacktestRunner(
+                session=session,
+                strategy=strategy,
+                parameters=parameters,
+                risk=BasicRiskEngine(
+                    notional_cap=Decimal(str(settings.risk_notional_cap)),
+                    option_spread_pct_max=Decimal(str(settings.option_spread_pct_max)),
+                    daily_loss_limit=Decimal(str(settings.risk_daily_loss_limit)),
+                    gross_exposure_cap=Decimal(str(settings.risk_gross_exposure_cap)),
+                    max_quote_age_seconds=settings.max_quote_age_seconds,
+                ),
+            )
+            backtest = runner.run(
+                start=start,
+                end=end,
+                symbols=symbols,
+                track=args.track,
+            )
         session.commit()
         output = {
             "mode": args.mode,
             "ingestion": ingest_result.as_dict(),
             "quality": quality.as_dict(),
-            "backtest": backtest.as_dict(),
+            "backtest": backtest.as_dict() if backtest is not None else None,
         }
         json_print(output)
         write_json(args.report_path, output)

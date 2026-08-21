@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 from itertools import product
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any
 
 
 @dataclass(frozen=True, slots=True)

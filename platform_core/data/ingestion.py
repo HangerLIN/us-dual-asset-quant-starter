@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -134,7 +135,7 @@ def upsert_option_chain(
         ask = _decimal_or_none(payload.get("ask"))
         mid = _decimal_or_none(payload.get("mid"))
         if mid is None and bid is not None and ask is not None and ask >= bid:
-            mid = (bid + ask) / Decimal("2")
+            mid = (bid + ask) / Decimal(2)
         session.merge(
             OptionChainMeta(
                 trade_date=trade_date,

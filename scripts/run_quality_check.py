@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from _bootstrap import ROOT  # noqa: F401
 from _common import json_print, open_db, parse_symbols, parse_window, write_json
+
 from platform_core.core import get_settings
 from platform_core.data import build_quality_report, persist_quality_report
 

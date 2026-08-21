@@ -12,6 +12,7 @@ from platform_core.data import (
 )
 from platform_core.data.fixtures import build_fixture_dataset
 from platform_core.db import Base, get_engine, get_session_factory
+from tests.support import BuyOnceTestStrategy
 
 
 def test_fixture_ingest_quality_and_db_backtest(tmp_path) -> None:
@@ -36,7 +37,10 @@ def test_fixture_ingest_quality_and_db_backtest(tmp_path) -> None:
         )
         assert report.ok
 
-        result = DBBacktestRunner(session=session).run(
+        result = DBBacktestRunner(
+            session=session,
+            strategy=BuyOnceTestStrategy(),
+        ).run(
             start=fixture.start,
             end=fixture.end,
             symbols=fixture.symbols,
@@ -44,7 +48,7 @@ def test_fixture_ingest_quality_and_db_backtest(tmp_path) -> None:
         )
         session.commit()
         assert result.status == "COMPLETED"
-        assert result.signal_count >= 1
+        assert result.decision_count >= 1
         assert result.trade_count >= 1
         assert result.gross_notional > 0
     finally:

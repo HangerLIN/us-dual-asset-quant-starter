@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 
 from _bootstrap import ROOT  # noqa: F401
 from _common import json_print, open_db, parse_date, parse_symbols
+
 from platform_core.core import get_settings
 from platform_core.data import IngestionResult, record_progress, upsert_option_chain
 from platform_core.infra import IBKRAdapter
@@ -57,7 +58,7 @@ def main() -> None:
         record_progress(session, result, cursor=trade_date.isoformat())
         session.commit()
         json_print(result)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         session.rollback()
         result = IngestionResult(
             task_key=f"option-chain:{','.join(symbols)}:{trade_date}",

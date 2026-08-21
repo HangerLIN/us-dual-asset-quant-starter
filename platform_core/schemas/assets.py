@@ -25,8 +25,41 @@ class InstrumentRef(BaseModel):
     expiry: date | datetime | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
+    @property
+    def key(self) -> str:
+        """Stable identity used by orders, fills, positions, and reconciliation."""
+        if self.conid is not None:
+            return f"{self.asset_type.value}:CONID:{self.conid}"
+        if self.asset_type == AssetType.OPTION:
+            expiry = self.expiry.date() if isinstance(self.expiry, datetime) else self.expiry
+            return ":".join(
+                [
+                    self.asset_type.value,
+                    self.symbol.upper(),
+                    str(expiry),
+                    str(self.option_right),
+                    str(self.strike),
+                    self.currency.upper(),
+                ]
+            )
+        return ":".join(
+            [
+                self.asset_type.value,
+                self.symbol.upper(),
+                (self.venue or "SMART").upper(),
+                self.currency.upper(),
+            ]
+        )
+
+    @property
+    def multiplier(self) -> Decimal:
+        value = self.metadata.get("multiplier")
+        if value is not None:
+            return Decimal(str(value))
+        return Decimal(100) if self.asset_type == AssetType.OPTION else Decimal(1)
+
     @model_validator(mode="after")
-    def validate_option_contract(self) -> "InstrumentRef":
+    def validate_option_contract(self) -> InstrumentRef:
         if self.asset_type == AssetType.OPTION:
             missing = [
                 name
@@ -54,9 +87,9 @@ class MarketQuote(BaseModel):
     source: str = "ibkr"
 
     @model_validator(mode="after")
-    def derive_mid(self) -> "MarketQuote":
+    def derive_mid(self) -> MarketQuote:
         if self.mid is None and self.bid is not None and self.ask is not None and self.ask >= self.bid:
-            self.mid = (self.bid + self.ask) / Decimal("2")
+            self.mid = (self.bid + self.ask) / Decimal(2)
         return self
 
     @property
